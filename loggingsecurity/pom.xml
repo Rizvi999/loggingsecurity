@@ -138,7 +138,7 @@
                         </goals>
                     </execution>
 
-                    <!-- Enforce 90% coverage -->
+                    <!-- Enforce 20% coverage -->
                     <execution>
                         <id>check</id>
                         <phase>verify</phase>
@@ -150,14 +150,14 @@
                                 <rule>
                                     <element>BUNDLE</element>
                                     <limits>
-                                        <!-- Minimum 90% instruction coverage -->
+                                        <!-- Minimum 20% instruction coverage -->
                                         <limit>
                                             <counter>INSTRUCTION</counter>
                                             <value>COVEREDRATIO</value>
                                             <minimum>0.20</minimum>
                                         </limit>
 
-                                        <!-- Minimum 90% line coverage -->
+                                        <!-- Minimum 20% line coverage -->
                                         <limit>
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
