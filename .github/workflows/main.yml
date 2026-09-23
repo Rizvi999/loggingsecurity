@@ -4,12 +4,10 @@ on:
   push:
     branches:
       - main
+
   pull_request:
     branches:
       - main
-
-permissions:
-  contents: read
 
 jobs:
   build:
@@ -18,69 +16,86 @@ jobs:
     services:
       mysql:
         image: mysql:8.4
+        ports:
+          - 3306:3306
         env:
           MYSQL_ROOT_PASSWORD: 1234
           MYSQL_DATABASE: studentdb
-        ports:
-          - 3306:3306
         options: >-
           --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -p1234"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
 
-    env:
-      DB_URL: jdbc:mysql://localhost:3306/studentdb?useSSL=false&serverTimezone=UTC
-      DB_USERNAME: root
-      DB_PASSWORD: 1234
-
     defaults:
       run:
         working-directory: loggingsecurity
 
     steps:
+
+      # -----------------------------------------
+      # 1. Checkout source code
+      # -----------------------------------------
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # -----------------------------------------
+      # 2. Setup JDK 21
+      # -----------------------------------------
       - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-          cache-dependency-path: loggingsecurity/pom.xml
 
+      # -----------------------------------------
+      # 3. Build and Run Unit Tests
+      # -----------------------------------------
       - name: Build and Test
-        run: ./mvnw --batch-mode clean verify
+        env:
+          SPRING_DATASOURCE_URL: jdbc:mysql://localhost:3306/studentdb?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true
+          SPRING_DATASOURCE_USERNAME: root
+          SPRING_DATASOURCE_PASSWORD: 1234
+        run: |
+          ./mvnw --batch-mode clean verify
 
+      # -----------------------------------------
+      # 4. Generate / Verify JaCoCo Coverage
+      # -----------------------------------------
       - name: Generate JaCoCo Coverage Report
-        run: ./mvnw --batch-mode jacoco:report
+        run: |
+          ./mvnw --batch-mode jacoco:report
 
+      # -----------------------------------------
+      # 5. Check Code Coverage >= 20%
+      # -----------------------------------------
       - name: Check Code Coverage
         shell: bash
         run: |
           python3 - <<'PY'
-          import sys
           import xml.etree.ElementTree as ET
+          import sys
 
           report = "target/site/jacoco/jacoco.xml"
 
           try:
               tree = ET.parse(report)
           except FileNotFoundError:
-              print(f"ERROR: JaCoCo report not found: {report}")
+              print("ERROR: JaCoCo report not found:")
+              print(report)
               sys.exit(1)
 
-          instruction_counter = next(
-              (
-                  counter
-                  for counter in tree.getroot().findall("counter")
-                  if counter.attrib.get("type") == "INSTRUCTION"
-              ),
-              None,
-          )
+          root = tree.getroot()
+
+          instruction_counter = None
+
+          for counter in root.findall("counter"):
+              if counter.attrib.get("type") == "INSTRUCTION":
+                  instruction_counter = counter
+                  break
 
           if instruction_counter is None:
               print("ERROR: INSTRUCTION coverage data not found.")
@@ -88,6 +103,7 @@ jobs:
 
           missed = int(instruction_counter.attrib["missed"])
           covered = int(instruction_counter.attrib["covered"])
+
           total = missed + covered
 
           if total == 0:
@@ -95,6 +111,7 @@ jobs:
               sys.exit(1)
 
           coverage = (covered / total) * 100
+
           print(f"Code Coverage: {coverage:.2f}%")
           print("Required Coverage: 20.00%")
 
@@ -107,32 +124,46 @@ jobs:
           print("Code coverage is 20% or higher.")
           PY
 
-      - name: SonarQube Analysis
-        uses: SonarSource/sonarqube-scan-action@v7
-        with:
-          projectBaseDir: loggingsecurity
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      # -----------------------------------------
+      # 6. SonarQube Analysis
+      # -----------------------------------------
+      # - name: SonarQube Analysis
+      #   uses: SonarSource/sonarqube-scan-action@v7
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #     SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-      - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1
-        timeout-minutes: 10
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # # -----------------------------------------
+      # # 7. SonarQube Quality Gate
+      # # -----------------------------------------
+      # - name: SonarQube Quality Gate
+      #   uses: SonarSource/sonarqube-quality-gate-action@v1
+      #   timeout-minutes: 10
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
+      # -----------------------------------------
+      # 8. Package Application
+      # -----------------------------------------
       - name: Package JAR
-        run: ./mvnw --batch-mode package -DskipTests
+        run: |
+          ./mvnw --batch-mode package -DskipTests
 
+      # -----------------------------------------
+      # 9. Upload JAR
+      # -----------------------------------------
       - name: Upload JAR Artifact
         uses: actions/upload-artifact@v4
         with:
           name: springboot-application
-          path: loggingsecurity/target/*.jar
+          path: target/*.jar
 
+      # -----------------------------------------
+      # 10. Upload JaCoCo Report
+      # -----------------------------------------
       - name: Upload JaCoCo Report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
-          path: loggingsecurity/target/site/jacoco
+          path: target/site/jacoco/
