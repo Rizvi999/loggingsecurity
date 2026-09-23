@@ -156,9 +156,8 @@ jobs:
       # 10. Build Docker image
       # -----------------------------------------
       - name: Build Docker Image
-        env:
-          IMAGE_NAME: ghcr.io/${{ github.repository }}
         run: |
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY,,}"
           docker build \
             --tag loggingsecurity:ci \
             --tag "$IMAGE_NAME:${GITHUB_SHA}" \
@@ -181,9 +180,8 @@ jobs:
       # -----------------------------------------
       - name: Push Docker Image
         if: github.event_name == 'push'
-        env:
-          IMAGE_NAME: ghcr.io/${{ github.repository }}
         run: |
+          IMAGE_NAME="ghcr.io/${GITHUB_REPOSITORY,,}"
           docker push "$IMAGE_NAME:${GITHUB_SHA}"
           docker push "$IMAGE_NAME:latest"
 
